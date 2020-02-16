@@ -1,0 +1,2 @@
+psutil==5.6.7
+simplejson==3.17.0
