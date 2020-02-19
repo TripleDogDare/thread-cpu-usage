@@ -1,9 +1,8 @@
 from decimal import Decimal
 from json import encoder
 from time import sleep
-import decimal
-import simplejson as json
 import psutil
+import simplejson as json
 
 attrs = [
         'pid',
