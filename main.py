@@ -72,9 +72,10 @@ def collect_processes(pid=None):
         result = {p.pid: p for p in psutil.process_iter(attrs=attrs)}
     return result
 
-def main(pid=None, interval=1, lines=None, sort_key='total_cpu_pct'):
-    children = collect_processes(pid)
-
+def collect_data(process_list, interval=1):
+    """ This part collects two measurements for the CPU and for each process.
+    Each measurement contains how long the CPU/process has been active.
+    """
     # START OF CRITICAL SECTION
     # This begins the critical section until the second set of timing data is collected
     # Too much processing inside the critical section will skew CPU usage percentage results
@@ -85,7 +86,7 @@ def main(pid=None, interval=1, lines=None, sort_key='total_cpu_pct'):
     # track data in dictionaries keyed by PID
     data = {}
     garbage = []
-    for pid, child in children.items():
+    for pid, child in process_list.items():
         try:
             data[pid] = child.as_dict(attrs=attrs)
         except psutil.NoSuchProcess:
@@ -98,7 +99,7 @@ def main(pid=None, interval=1, lines=None, sort_key='total_cpu_pct'):
 
     # second timing data is used to calculate deltas/percentages
     cpu_time2 = psutil.cpu_times(percpu=False)
-    for pid, child in children.items():
+    for pid, child in process_list.items():
         value = data[pid]
         try:
             value.update({
@@ -113,7 +114,15 @@ def main(pid=None, interval=1, lines=None, sort_key='total_cpu_pct'):
                 'threads2':  value['threads'] or None,
             })
     # END OF CRITICAL SECTION
+    return data
 
+def calculate_percentages(data):
+    """ At this point we have the running CPU time from two measurements. Subtracting the two gives us the difference in total CPU time between those measurements.
+    We also have the running process times for points that should be close to the total CPU measurement times.
+    Subtract the two to get how much time that process was active in our interval (delta times).
+    Dividing that delta by the total CPU time that passed to get an approximate CPU usage for the process in the given interval.
+    Returns a dictionary keyed by PID.
+    """
     # post processing to calculate cpu percentages
     cpu_delta = sum(cpu_time2) - sum(cpu_time1)
     for tid, item in data.items():
@@ -158,7 +167,15 @@ def main(pid=None, interval=1, lines=None, sort_key='total_cpu_pct'):
             'cpu_times': cpu_times,
             'threads': list(thread_deltas.values()),
         })
+    return data
 
+
+def main(pid=None, interval=1, lines=None, sort_key='total_cpu_pct'):
+    process_list = collect_processes(pid)
+    data = collect_data(process_list, interval=interval)
+    data = calculate_percentages(data)
+
+    # Everything after this is specific to how you want the data formatted for output
     data = list(data.values())
     data = sorted(data, key=lambda x: x['cpu_times'][sort_key], reverse=True)
 
